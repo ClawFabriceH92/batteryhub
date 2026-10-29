@@ -1,7 +1,7 @@
 
 from PIL import Image, ImageDraw
 import pathlib
-src = Image.open("/root/projects/batteryhub/outils/icone/brut2/candidat-4-seed132864093.png").convert("RGB")
+src = Image.open("/root/projects/batteryhub/outils/icone/brut3/candidat-4-seed133069184.png").convert("RGB")
 fond = (0x37, 0x3B, 0x53)
 taille = 512
 base = src.resize((taille, taille), Image.LANCZOS)
