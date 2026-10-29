@@ -7,3 +7,5 @@ local.properties
 *.aab
 tools/_bloc.js
 .venv/
+outils/icone/brut/
+outils/icone/brut2/
