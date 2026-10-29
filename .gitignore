@@ -1,4 +1,9 @@
-__pycache__/
+app/build/
+.gradle/
+build/
+.kotlin/
+local.properties
 *.apk
+*.aab
 tools/_bloc.js
 .venv/
