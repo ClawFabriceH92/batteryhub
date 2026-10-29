@@ -28,8 +28,8 @@ to this project's gradle.properties.
 > Task :app:createDebugCompatibleScreenManifests
 > Task :app:extractDeepLinksDebug UP-TO-DATE
 > Task :app:parseDebugLocalResources
-> Task :app:mergeDebugResources
 > Task :app:processDebugMainManifest
+> Task :app:mergeDebugResources
 > Task :app:processDebugManifest
 > Task :app:javaPreCompileDebug UP-TO-DATE
 > Task :app:preDebugUnitTestBuild UP-TO-DATE
@@ -41,20 +41,17 @@ to this project's gradle.properties.
 > Task :app:extractReleaseNativeSymbolTables NO-SOURCE
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
 > Task :app:checkReleaseDuplicateClasses UP-TO-DATE
-> Task :app:processDebugManifestForPackage
 > Task :app:buildKotlinToolingMetadata UP-TO-DATE
 > Task :app:generateReleaseBuildConfig
 > Task :app:checkReleaseAarMetadata UP-TO-DATE
 > Task :app:generateReleaseResValues UP-TO-DATE
 > Task :app:mapReleaseSourceSetPaths
 > Task :app:generateReleaseResources
-> Task :app:processDebugResources
 > Task :app:packageReleaseResources
 > Task :app:parseReleaseLocalResources FROM-CACHE
 > Task :app:createReleaseCompatibleScreenManifests
 > Task :app:extractDeepLinksRelease UP-TO-DATE
 > Task :app:processReleaseMainManifest
-> Task :app:mergeReleaseResources
 > Task :app:processReleaseManifest
 > Task :app:javaPreCompileRelease UP-TO-DATE
 > Task :app:desugarReleaseFileDependencies UP-TO-DATE
@@ -69,10 +66,13 @@ to this project's gradle.properties.
 > Task :app:extractReleaseVersionControlInfo
 > Task :app:collectReleaseDependencies UP-TO-DATE
 > Task :app:sdkReleaseDependencyData UP-TO-DATE
+> Task :app:processReleaseManifestForPackage
 > Task :app:validateSigningRelease UP-TO-DATE
 > Task :app:writeReleaseAppMetadata UP-TO-DATE
 > Task :app:writeReleaseSigningConfigVersions UP-TO-DATE
-> Task :app:processReleaseManifestForPackage
+> Task :app:processDebugManifestForPackage
+> Task :app:mergeReleaseResources
+> Task :app:processDebugResources
 > Task :app:processReleaseResources
 > Task :app:optimizeReleaseResources
 > Task :app:compileDebugKotlin
@@ -96,5 +96,5 @@ to this project's gradle.properties.
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
 
-BUILD SUCCESSFUL in 51s
+BUILD SUCCESSFUL in 52s
 66 actionable tasks: 36 executed, 1 from cache, 29 up-to-date
