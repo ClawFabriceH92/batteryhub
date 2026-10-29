@@ -19,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Mouse
@@ -26,10 +27,12 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Speaker
 import androidx.compose.material.icons.filled.Watch
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -427,7 +430,12 @@ private fun Graphe(points: List<Pair<Long, Int>>) {
 }
 
 @Composable
-fun EcranWidget(appareils: List<Appareil>, mode: String, onMode: (String) -> Unit) {
+fun EcranWidget(
+    appareils: List<Appareil>,
+    mode: String,
+    onMode: (String) -> Unit,
+    onRetour: (() -> Unit)? = null,
+) {
     val tries = appareils.filter { it.niveau >= 0 }.sortedBy { it.niveau }
     val affiches = if (mode == "2x2") tries.take(1) else tries.take(4)
 
@@ -436,6 +444,20 @@ fun EcranWidget(appareils: List<Appareil>, mode: String, onMode: (String) -> Uni
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 18.dp, vertical = 10.dp)
     ) {
+        // L'écran widget s'ouvre depuis les réglages : il lui faut un retour,
+        // sinon on reste coincé dessus.
+        onRetour?.let { retour ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = retour) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
+                }
+                Text(
+                    "Réglages",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         Titre("Widget", "Aperçu de l'écran d'accueil")
         Spacer(Modifier.height(14.dp))
 
@@ -655,6 +677,7 @@ fun EcranReglages(
     onLectureDeconnectes: (Boolean) -> Unit,
     onLectureAuto: (Appareil, Boolean) -> Unit,
     appareilsMaj: (List<Appareil>) -> Unit,
+    onOuvrirWidget: () -> Unit = {},
     etatMaj: UpdateManager.State = UpdateManager.State.Idle,
     onVerifierMaj: () -> Unit = {},
     onTelechargerMaj: () -> Unit = {},
@@ -804,6 +827,31 @@ fun EcranReglages(
             onInstaller = onInstallerMaj,
             onAutoriser = onAutoriserInstallation,
         )
+
+        Spacer(Modifier.height(12.dp))
+        // Le widget a son écran (aperçu + taille) : il s'ouvre d'ici, ce qui
+        // évite un sixième onglet dans la barre du bas, trop serrée à six.
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text(
+                    "WIDGET D'ACCUEIL",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Aperçu et taille du widget (4 × 2 ou 2 × 2).",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+                Spacer(Modifier.height(10.dp))
+                FilledTonalButton(onClick = onOuvrirWidget) { Text("Configurer le widget") }
+            }
+        }
 
         Spacer(Modifier.height(12.dp))
         Card(
@@ -984,6 +1032,54 @@ private fun CarteMiseAJour(
                 }
             }
         }
+    }
+}
+
+/**
+ * Mise à jour annoncée au lancement : sans ce dialogue, une version disponible
+ * ne se voyait que dans les réglages, donc jamais. Téléchargement automatique
+ * sur Wi-Fi, installation en un appui (Android impose sa confirmation).
+ */
+@Composable
+fun DialogueMiseAJour(
+    etat: UpdateManager.State,
+    onTelecharger: () -> Unit,
+    onInstaller: () -> Unit,
+    onAutoriser: () -> Unit,
+    onPlusTard: () -> Unit,
+) {
+    when (etat) {
+        is UpdateManager.State.Available -> AlertDialog(
+            onDismissRequest = onPlusTard,
+            title = { Text("Version ${etat.version} disponible") },
+            text = {
+                Text(
+                    etat.notes.ifBlank { "Une nouvelle version de BatteryHub est prête." },
+                )
+            },
+            confirmButton = { TextButton(onClick = onTelecharger) { Text("Télécharger") } },
+            dismissButton = { TextButton(onClick = onPlusTard) { Text("Plus tard") } },
+        )
+
+        is UpdateManager.State.ReadyToInstall -> AlertDialog(
+            onDismissRequest = onPlusTard,
+            title = { Text("Version ${etat.version} prête") },
+            text = {
+                Text(
+                    "L'installation remplace l'application : réglages et historique sont " +
+                        "conservés. Android demandera une confirmation.",
+                )
+            },
+            confirmButton = { TextButton(onClick = onInstaller) { Text("Installer") } },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = onAutoriser) { Text("Autoriser", fontSize = 11.sp) }
+                    TextButton(onClick = onPlusTard) { Text("Plus tard") }
+                }
+            },
+        )
+
+        else -> Unit
     }
 }
 

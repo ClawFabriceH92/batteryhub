@@ -12,12 +12,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -46,6 +45,7 @@ import fr.fh.batteryhub.service.VeillePlanificateur
 import fr.fh.batteryhub.service.VeilleService
 import fr.fh.batteryhub.ui.EcranAlertes
 import fr.fh.batteryhub.ui.EcranAppareils
+import fr.fh.batteryhub.ui.DialogueMiseAJour
 import fr.fh.batteryhub.ui.EcranBatterie
 import fr.fh.batteryhub.ui.EcranHistorique
 import fr.fh.batteryhub.ui.EcranReglages
@@ -105,6 +105,7 @@ private fun AppBatteryHub(demanderPermissions: () -> Unit) {
     val portee = rememberCoroutineScope()
 
     var onglet by remember { mutableIntStateOf(0) }
+    var widgetOuvert by remember { mutableStateOf(false) }
     var appareils by remember { mutableStateOf(Releveur.instantane(context)) }
     var enCours by remember { mutableStateOf(false) }
     var dernierScan by remember { mutableStateOf(reglages.dernierScan) }
@@ -156,6 +157,16 @@ private fun AppBatteryHub(demanderPermissions: () -> Unit) {
         stats = statsLues
     }
 
+    // Contrôle des mises à jour : un au lancement, puis un toutes les 30 minutes
+    // tant que l'app reste ouverte. Le manager garde un plancher d'un appel par
+    // heure, et un contrôle raté ne consomme pas le créneau.
+    LaunchedEffect(Unit) {
+        while (true) {
+            UpdateManager.checkAtLaunch(context)
+            kotlinx.coroutines.delay(30 * 60_000L)
+        }
+    }
+
     LaunchedEffect(Unit) {
         if (permissionsManquantes(context)) demanderPermissions()
         if (appareils.isEmpty() ||
@@ -168,13 +179,15 @@ private fun AppBatteryHub(demanderPermissions: () -> Unit) {
     Scaffold(
         bottomBar = {
             NavigationBar {
+                // Cinq onglets au maximum : à six, les libellés sont serrés et
+                // deux icônes de batterie se ressemblent. Le widget se configure
+                // depuis les réglages.
                 val entrees = listOf(
                     Triple("Appareils", Icons.Filled.BatteryFull, 0),
-                    Triple("Ma batterie", Icons.Filled.BatteryChargingFull, 1),
+                    Triple("Ma batterie", Icons.Filled.Smartphone, 1),
                     Triple("Historique", Icons.Filled.History, 2),
-                    Triple("Widget", Icons.Filled.Widgets, 3),
-                    Triple("Alertes", Icons.Filled.Notifications, 4),
-                    Triple("Réglages", Icons.Filled.Settings, 5),
+                    Triple("Alertes", Icons.Filled.Notifications, 3),
+                    Triple("Réglages", Icons.Filled.Settings, 4),
                 )
                 entrees.forEach { (libelle, icone, index) ->
                     NavigationBarItem(
@@ -223,16 +236,7 @@ private fun AppBatteryHub(demanderPermissions: () -> Unit) {
 
                 2 -> EcranHistorique(appareils = appareils)
 
-                3 -> EcranWidget(
-                    appareils = appareils,
-                    mode = reglages.widgetMode,
-                    onMode = { mode ->
-                        reglages.widgetMode = mode
-                        appareils = appareils.toList()
-                    },
-                )
-
-                4 -> EcranAlertes(
+                3 -> EcranAlertes(
                     appareils = appareils,
                     seuil = seuil,
                     onSeuil = { valeur ->
@@ -242,7 +246,18 @@ private fun AppBatteryHub(demanderPermissions: () -> Unit) {
                     },
                 )
 
-                else -> EcranReglages(
+                else -> if (widgetOuvert) {
+                    EcranWidget(
+                        appareils = appareils,
+                        mode = reglages.widgetMode,
+                        onMode = { mode ->
+                            reglages.widgetMode = mode
+                            appareils = appareils.toList()
+                        },
+                        onRetour = { widgetOuvert = false },
+                    )
+                } else EcranReglages(
+                    onOuvrirWidget = { widgetOuvert = true },
                     frequence = frequence,
                     seuil = seuil,
                     lectureDeconnectes = lectureDeconnectes,
@@ -272,6 +287,16 @@ private fun AppBatteryHub(demanderPermissions: () -> Unit) {
             }
         }
     }
+
+    // Une version disponible doit se voir tout de suite, pas seulement dans les
+    // réglages : le dialogue couvre tous les onglets.
+    DialogueMiseAJour(
+        etat = etatMaj,
+        onTelecharger = { UpdateManager.download(context) },
+        onInstaller = { UpdateManager.install(context) },
+        onAutoriser = { UpdateManager.openInstallSettings(context) },
+        onPlusTard = { UpdateManager.dismiss() },
+    )
 }
 
 private fun permissionsManquantes(context: Context): Boolean {

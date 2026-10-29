@@ -16,6 +16,12 @@ v1.0.0 : application compilée, signée et publiée en release GitHub.
 ## Fonctionnalités
 
 - Relevé du téléphone : niveau, santé, cycles, température.
+- **Navigation à 5 onglets (v1.2.0)** : Appareils, Ma batterie, Historique, Alertes, Réglages. Le
+  widget se configure depuis les réglages (aperçu + taille), ce qui évite un sixième onglet serré et
+  deux icônes de batterie qui se ressemblaient.
+- **Mise à jour annoncée au lancement (v1.2.0)** : contrôle au démarrage puis toutes les 30 minutes
+  tant que l'app est ouverte, et dialogue direct (« version X disponible » / « prête à installer »)
+  au lieu de l'information enterrée dans les réglages.
 - **Écran « Ma batterie » (v1.1.0)** : cycles (compteur du système quand Android 14+ le publie,
   sinon estimation), état en direct (courant en mA, puissance en W, tension, température, charge
   restante en mAh, temps de charge ou autonomie restante) et statistiques de charge/décharge sur
