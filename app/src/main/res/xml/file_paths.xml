@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
+    <!-- L'APK de mise à jour est écrit dans files/updates : sans cette ligne,
+         FileProvider.getUriForFile lève IllegalArgumentException et le bouton
+         « Installer » ne fait rien du tout. -->
+    <files-path name="updates" path="updates/" />
     <external-files-path name="documents" path="Documents/" />
     <external-files-path name="downloads" path="Download/" />
     <files-path name="exports" path="exports/" />

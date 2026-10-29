@@ -10,8 +10,16 @@ import java.io.File
 /** Les deux passages de relais système dont le flux de mise à jour a besoin. */
 object AutoUpdater {
 
-    fun install(context: Context, file: File) {
-        try {
+    const val AUTORISATION_MANQUANTE = "autorisation d'installation manquante"
+
+    /**
+     * Ouvre l'installeur sur l'APK téléchargé.
+     * @return null en cas de succès, sinon la raison de l'échec à afficher.
+     */
+    fun install(context: Context, file: File): String? {
+        if (!file.exists() || file.length() == 0L) return "fichier de mise à jour absent"
+        if (!peutInstaller(context)) return AUTORISATION_MANQUANTE
+        return try {
             val uri = FileProvider.getUriForFile(
                 context, "${context.packageName}.fileprovider", file
             )
@@ -21,10 +29,15 @@ object AutoUpdater {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
-        } catch (_: Exception) {
-            // installation impossible : l'écran Réglages garde le bouton actif
+            null
+        } catch (e: Exception) {
+            e.message ?: "ouverture de l'installeur impossible"
         }
     }
+
+    fun peutInstaller(context: Context): Boolean = runCatching {
+        context.packageManager.canRequestPackageInstalls()
+    }.getOrDefault(false)
 
     fun openInstallSettings(context: Context) {
         try {

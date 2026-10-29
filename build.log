@@ -28,8 +28,8 @@ to this project's gradle.properties.
 > Task :app:createDebugCompatibleScreenManifests
 > Task :app:extractDeepLinksDebug UP-TO-DATE
 > Task :app:parseDebugLocalResources
-> Task :app:processDebugMainManifest
 > Task :app:mergeDebugResources
+> Task :app:processDebugMainManifest
 > Task :app:processDebugManifest
 > Task :app:javaPreCompileDebug UP-TO-DATE
 > Task :app:preDebugUnitTestBuild UP-TO-DATE
@@ -51,6 +51,7 @@ to this project's gradle.properties.
 > Task :app:parseReleaseLocalResources FROM-CACHE
 > Task :app:createReleaseCompatibleScreenManifests
 > Task :app:extractDeepLinksRelease UP-TO-DATE
+> Task :app:mergeReleaseResources
 > Task :app:processReleaseMainManifest
 > Task :app:processReleaseManifest
 > Task :app:javaPreCompileRelease UP-TO-DATE
@@ -66,21 +67,20 @@ to this project's gradle.properties.
 > Task :app:extractReleaseVersionControlInfo
 > Task :app:collectReleaseDependencies UP-TO-DATE
 > Task :app:sdkReleaseDependencyData UP-TO-DATE
-> Task :app:processReleaseManifestForPackage
 > Task :app:validateSigningRelease UP-TO-DATE
 > Task :app:writeReleaseAppMetadata UP-TO-DATE
 > Task :app:writeReleaseSigningConfigVersions UP-TO-DATE
 > Task :app:processDebugManifestForPackage
-> Task :app:mergeReleaseResources
-> Task :app:processDebugResources
+> Task :app:processReleaseManifestForPackage
 > Task :app:processReleaseResources
+> Task :app:processDebugResources
 > Task :app:optimizeReleaseResources
 > Task :app:compileDebugKotlin
 > Task :app:compileReleaseKotlin
 > Task :app:compileDebugJavaWithJavac
 > Task :app:processDebugJavaRes UP-TO-DATE
-> Task :app:bundleDebugClassesToCompileJar
 > Task :app:bundleDebugClassesToRuntimeJar
+> Task :app:bundleDebugClassesToCompileJar
 > Task :app:compileReleaseJavaWithJavac
 > Task :app:compileDebugUnitTestKotlin
 > Task :app:dexBuilderRelease
@@ -96,5 +96,5 @@ to this project's gradle.properties.
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
 
-BUILD SUCCESSFUL in 52s
+BUILD SUCCESSFUL in 53s
 66 actionable tasks: 36 executed, 1 from cache, 29 up-to-date

@@ -179,12 +179,17 @@ object UpdateManager {
 
     fun install(context: Context) {
         val pret = _state.value as? State.ReadyToInstall ?: return
-        AutoUpdater.install(context, pret.file)
+        val erreur = AutoUpdater.install(context, pret.file)
+        if (erreur != null) {
+            // un échec silencieux est le pire des cas : on affiche la cause
+            _state.value = State.Failed(erreur)
+            if (erreur == AutoUpdater.AUTORISATION_MANQUANTE) {
+                AutoUpdater.openInstallSettings(context)
+            }
+        }
     }
 
-    fun canInstall(context: Context): Boolean = runCatching {
-        context.packageManager.canRequestPackageInstalls()
-    }.getOrDefault(false)
+    fun canInstall(context: Context): Boolean = AutoUpdater.peutInstaller(context)
 
     fun openInstallSettings(context: Context) = AutoUpdater.openInstallSettings(context)
 

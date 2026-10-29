@@ -967,7 +967,10 @@ private fun CarteMiseAJour(
                         )
                     }
                     Spacer(Modifier.height(8.dp))
-                    OutlinedButton(onClick = onVerifier) { Text("Réessayer") }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onVerifier) { Text("Réessayer") }
+                        OutlinedButton(onClick = onAutoriser) { Text("Autoriser l'installation") }
+                    }
                 }
 
                 UpdateManager.State.Idle -> {
