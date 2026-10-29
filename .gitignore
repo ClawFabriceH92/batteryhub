@@ -1,0 +1,4 @@
+__pycache__/
+*.apk
+tools/_bloc.js
+.venv/
