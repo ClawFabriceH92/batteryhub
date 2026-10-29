@@ -3,12 +3,21 @@ name: build
 on:
   push:
     branches: [ master, main ]
-    tags: [ "v*" ]
+  pull_request:
+    branches: [ master, main ]
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       BATTERYHUB_KEYSTORE_B64: ${{ secrets.BATTERYHUB_KEYSTORE_B64 }}
       BATTERYHUB_KEYSTORE_PASSWORD: ${{ secrets.BATTERYHUB_KEYSTORE_PASSWORD }}
@@ -17,56 +26,85 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: 21
 
-      - uses: android-actions/setup-android@v3
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
 
-      - name: Dépendances
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" > /dev/null
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle.kts', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-
 
-      - name: Tests unitaires
+      - name: Unit tests
         run: ./gradlew testDebugUnitTest --no-daemon
 
-      - name: Compter les tests exécutés
+      # « 0 test trouvé » sort aussi en 0 : sans ce garde-fou le job serait une coche verte decorative.
+      - name: Assert unit tests actually ran
         run: |
-          python3 - <<'PY'
-          import glob, xml.etree.ElementTree as ET
-          total = sum(int(ET.parse(f).getroot().get('tests', 0)) for f in glob.glob('app/build/test-results/**/*.xml', recursive=True))
-          print("tests exécutés :", total)
-          if total == 0:
-              raise SystemExit("aucun test exécuté")
-          PY
+          python3 - <<'EOF'
+          import glob, sys, xml.etree.ElementTree as ET
+          fichiers = glob.glob('app/build/test-results/**/*.xml', recursive=True)
+          total = sum(int(ET.parse(f).getroot().get('tests', 0)) for f in fichiers)
+          print(f'{len(fichiers)} classe(s) de test, {total} test(s) unitaires')
+          if total < 10:
+              sys.exit(f'Trop peu de tests executes ({total})')
+          EOF
 
-      - name: APK release signé
+      - name: Build release APK
         run: ./gradlew assembleRelease --no-daemon
 
-      - name: Nommer l'APK
+      - name: Verify signature
         run: |
-          VER=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)
-          cp app/build/outputs/apk/release/app-release.apk "batteryhub-v${VER}.apk"
-          echo "APK=batteryhub-v${VER}.apk" >> "$GITHUB_ENV"
-          echo "VER=${VER}" >> "$GITHUB_ENV"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | tail -1)
+          "$BT/apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk | head -5
 
-      - name: Vérifier la signature
-        run: |
-          BT=$(ls -d /usr/local/lib/android/sdk/build-tools/* 2>/dev/null | tail -1)
-          "${BT}/apksigner" verify --print-certs "$APK"
-
-      - uses: actions/upload-artifact@v4
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
         with:
           name: batteryhub-apk
-          path: batteryhub-v*.apk
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
 
-      - name: Publier la release roulante
-        if: github.ref_type == 'branch'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish "latest" release
+        if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
         run: |
-          gh release delete latest --yes || true
+          VER=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)
+          APK=app/build/outputs/apk/release/app-release.apk
+          # Creation une fois, puis ecrasement de l'asset sur place : l'URL de
+          # telechargement ne repond jamais 404 entre deux builds.
+          gh release view latest >/dev/null 2>&1 || \
+            gh release create latest --title "BatteryHub v${VER}" --notes "Build automatique - v${VER}"
+          gh release edit latest --title "BatteryHub v${VER}" --notes "Build automatique - v${VER}"
           for i in 1 2 3 4 5; do
-            gh release create latest "$APK" --title "BatteryHub $VER" --notes "Build automatique de la branche $GITHUB_REF_NAME" && break
+            gh release upload latest "$APK" --clobber && break
             sleep 10
           done
+          # Publie APRES l'APK pour que le manifeste n'annonce jamais une version
+          # dont l'asset n'est pas encore en ligne. L'application lit ce fichier
+          # avant l'API : un telechargement d'asset n'a pas de quota horaire par IP.
+          printf '{"version":"%s","notes":"Build automatique - v%s","apk":"%s"}\n' \
+            "$VER" "$VER" \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/latest/app-release.apk" \
+            > "$RUNNER_TEMP/version.json"
+          for i in 1 2 3 4 5; do
+            gh release upload latest "$RUNNER_TEMP/version.json" --clobber && break
+            sleep 10
+          done
+          # Une release roulante accumule les assets : un APK perime laisse en
+          # place est ce qui fait installer une version plus ancienne.
+          gh release view latest --json assets -q '.assets[].name' \
+            | grep -vx -e 'app-release.apk' -e 'version.json' \
+            | while read -r stale; do gh release delete-asset latest "$stale" -y || true; done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

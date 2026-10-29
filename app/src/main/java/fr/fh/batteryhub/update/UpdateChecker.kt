@@ -1,86 +1,179 @@
 package fr.fh.batteryhub.update
 
+import fr.fh.batteryhub.BuildConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
+import org.json.JSONObject
+import java.io.IOException
+import java.net.ConnectException
 import java.net.HttpURLConnection
+import java.net.NoRouteToHostException
+import java.net.SocketTimeoutException
 import java.net.URL
+import java.net.UnknownHostException
+import javax.net.ssl.SSLException
 
-data class UpdateInfo(
-    val versionName: String,
-    val downloadUrl: String,
-    val notes: String?,
-    val publishedAt: String?,
-)
-
-/** Vérifie la dernière release GitHub portant un APK. */
+/**
+ * Vérifie les releases GitHub, comme Notes de frais : la release roulante `latest`
+ * porte `version.json` à côté de l'APK, et le manifeste est lu AVANT l'API, parce
+ * qu'un appel API non authentifié est limité à 60 par heure et par adresse.
+ *
+ * Le dépôt doit rester PUBLIC : les assets d'un dépôt privé répondent 404 sans
+ * jeton, et l'application n'en a pas.
+ */
 object UpdateChecker {
 
-    private const val RELEASES_URL = "https://api.github.com/repos/ClawFabriceH92/batteryhub/releases?per_page=5"
+    const val REPO = "ClawFabriceH92/batteryhub"
 
-    fun latestWithApk(): UpdateInfo? {
-        val conn = try {
-            URL(RELEASES_URL).openConnection() as HttpURLConnection
-        } catch (_: Throwable) {
-            return null
+    const val MANIFEST_URL = "https://github.com/$REPO/releases/download/latest/version.json"
+    const val API_URL = "https://api.github.com/repos/$REPO/releases"
+    const val APK_URL = "https://github.com/$REPO/releases/download/latest/app-release.apk"
+
+    private const val TIMEOUT_MS = 10_000
+
+    data class UpdateInfo(
+        val version: String,
+        val apkUrl: String,
+        val notes: String = "",
+    )
+
+    /** Trois issues : disponible, à jour, ou « impossible de demander ». */
+    sealed interface CheckResult {
+        data class Available(val info: UpdateInfo) : CheckResult
+        data object UpToDate : CheckResult
+        data class Unreachable(val reason: String, val answered: Boolean = false) : CheckResult
+    }
+
+    class HttpStatusException(val code: Int, reason: String) : IOException(reason)
+
+    suspend fun check(installed: String = BuildConfig.VERSION_NAME): CheckResult =
+        withContext(Dispatchers.IO) {
+            val manifeste = runCatching { fetch(MANIFEST_URL, github = false) }
+            manifeste.getOrNull()
+                ?.let { parseManifest(it, installed) }
+                ?.let { return@withContext it }
+
+            val api = runCatching { fetch(API_URL, github = true) }
+            api.getOrNull()
+                ?.let { parseApi(it, installed) }
+                ?.let { return@withContext it }
+
+            failureVerdict(manifeste, api)
         }
-        conn.connectTimeout = 10_000
-        conn.readTimeout = 10_000
-        conn.setRequestProperty("Accept", "application/vnd.github+json")
-        conn.setRequestProperty("User-Agent", "BatteryHub-UpdateChecker")
-        return try {
-            if (conn.responseCode != 200) {
-                null
-            } else {
-                parseReleases(conn.inputStream.bufferedReader().use { it.readText() })
+
+    internal fun logLine(result: CheckResult.Unreachable): String =
+        if (result.answered) "GitHub a répondu : ${result.reason}"
+        else "vérification impossible : ${result.reason}"
+
+    internal fun failureVerdict(
+        manifeste: Result<String>,
+        api: Result<String>,
+    ): CheckResult.Unreachable {
+        val echecs = listOfNotNull(manifeste.exceptionOrNull(), api.exceptionOrNull())
+        val reseau = echecs.firstOrNull { it !is HttpStatusException }
+        val cause = reseau ?: api.exceptionOrNull() ?: manifeste.exceptionOrNull()
+        val aRepondu = cause == null || cause is HttpStatusException
+        return CheckResult.Unreachable(cause?.let { describe(it) } ?: "réponse illisible", aRepondu)
+    }
+
+    private fun fetch(url: String, github: Boolean): String {
+        val conn = URL(url).openConnection() as HttpURLConnection
+        try {
+            conn.connectTimeout = TIMEOUT_MS
+            conn.readTimeout = TIMEOUT_MS
+            conn.instanceFollowRedirects = true
+            conn.setRequestProperty("User-Agent", "BatteryHub/${BuildConfig.VERSION_NAME}")
+            if (github) conn.setRequestProperty("Accept", "application/vnd.github+json")
+            val code = conn.responseCode
+            if (code != HttpURLConnection.HTTP_OK) {
+                throw HttpStatusException(
+                    code,
+                    httpReason(code, conn.getHeaderField("x-ratelimit-remaining")),
+                )
             }
-        } catch (_: Throwable) {
-            null
+            return conn.inputStream.bufferedReader().use { it.readText() }
         } finally {
-            try { conn.disconnect() } catch (_: Throwable) {}
+            conn.disconnect()
         }
     }
 
-    internal fun parseReleases(jsonText: String): UpdateInfo? = try {
-        val releases = JSONArray(jsonText)
-        var meilleure: UpdateInfo? = null
+    internal fun httpReason(code: Int, rateLimitRemaining: String?): String = when {
+        code == HttpURLConnection.HTTP_FORBIDDEN && rateLimitRemaining == "0" ->
+            "quota GitHub épuisé pour cette adresse IP"
+        code == HttpURLConnection.HTTP_FORBIDDEN -> "accès refusé par GitHub (HTTP 403)"
+        code == HttpURLConnection.HTTP_NOT_FOUND -> "ressource absente (HTTP 404)"
+        else -> "HTTP $code"
+    }
+
+    internal fun describe(e: Throwable): String = when (e) {
+        is UnknownHostException -> "nom d'hôte introuvable, DNS injoignable"
+        is SocketTimeoutException -> "délai d'attente dépassé"
+        is NoRouteToHostException -> "aucune route vers l'hôte"
+        is ConnectException -> "connexion impossible"
+        is SSLException -> "échec TLS (${e.message.orEmpty()})"
+        is IOException -> e.message.orEmpty().ifBlank { "erreur réseau" }
+        else -> "${e.javaClass.simpleName}: ${e.message.orEmpty()}"
+    }
+
+    internal fun parseManifest(body: String, installed: String): CheckResult? {
+        val json = runCatching { JSONObject(body) }.getOrNull() ?: return null
+        val version = extractVersion(json.optString("version", "")) ?: return null
+        val apkUrl = json.optString("apk", "").ifBlank { APK_URL }
+        return if (compareVersions(version, installed) > 0) {
+            CheckResult.Available(UpdateInfo(version, apkUrl, json.optString("notes", "")))
+        } else {
+            CheckResult.UpToDate
+        }
+    }
+
+    internal fun parseApi(body: String, installed: String): CheckResult? {
+        val releases = runCatching { JSONArray(body) }.getOrNull() ?: return null
         for (i in 0 until releases.length()) {
-            val rel = releases.getJSONObject(i)
-            if (rel.optBoolean("draft")) continue
-            val tag = rel.optString("tag_name", "").removePrefix("v")
-            if (tag.isBlank()) continue
-            val assets = rel.optJSONArray("assets") ?: continue
-            for (j in 0 until assets.length()) {
-                val asset = assets.getJSONObject(j)
-                val nom = asset.optString("name", "")
-                if (!nom.endsWith(".apk")) continue
-                val url = asset.optString("browser_download_url", "")
-                if (url.isEmpty()) continue
-                val info = UpdateInfo(
-                    versionName = tag,
-                    downloadUrl = url,
-                    notes = rel.optString("body").takeIf { it.isNotBlank() },
-                    publishedAt = rel.optString("published_at").takeIf { it.isNotBlank() },
+            val release = releases.optJSONObject(i) ?: continue
+            if (release.optBoolean("draft")) continue
+            // la release roulante est étiquetée « latest » : la version est dans le titre
+            val version = extractVersion(release.optString("tag_name", ""))
+                ?: extractVersion(release.optString("name", ""))
+                ?: continue
+            val assets = release.optJSONArray("assets") ?: JSONArray()
+            val apkUrl = pickApk(assets, version) ?: continue
+            if (compareVersions(version, installed) > 0) {
+                return CheckResult.Available(
+                    UpdateInfo(version, apkUrl, release.optString("body", ""))
                 )
-                if (meilleure == null || compareVersions(info.versionName, meilleure.versionName) > 0) {
-                    meilleure = info
-                }
-                break
             }
         }
-        meilleure
-    } catch (_: Throwable) {
-        null
+        return CheckResult.UpToDate
+    }
+
+    fun extractVersion(text: String): String? =
+        Regex("""\d+(?:\.\d+)+""").find(text)?.value
+
+    fun pickApk(assets: JSONArray, version: String): String? {
+        val apks = (0 until assets.length())
+            .map { assets.getJSONObject(it) }
+            .filter { it.optString("name", "").endsWith(".apk", ignoreCase = true) }
+        if (apks.isEmpty()) return null
+        val parVersion = apks.firstOrNull { it.optString("name").contains(version) }
+        val canonique = apks.firstOrNull { it.optString("name") == "app-release.apk" }
+        return (parVersion ?: canonique ?: apks.first())
+            .optString("browser_download_url")
+            .ifBlank { null }
     }
 
     fun compareVersions(a: String, b: String): Int {
-        val sa = a.trim().split(".").map { it.toIntOrNull() ?: 0 }
-        val sb = b.trim().split(".").map { it.toIntOrNull() ?: 0 }
-        for (i in 0 until maxOf(sa.size, sb.size)) {
-            val cmp = sa.getOrElse(i) { 0 }.compareTo(sb.getOrElse(i) { 0 })
-            if (cmp != 0) return cmp
+        val pa = a.split(".").map { it.toIntOrNull() ?: 0 }
+        val pb = b.split(".").map { it.toIntOrNull() ?: 0 }
+        for (i in 0 until maxOf(pa.size, pb.size)) {
+            val va = pa.getOrElse(i) { 0 }
+            val vb = pb.getOrElse(i) { 0 }
+            if (va > vb) return 1
+            if (va < vb) return -1
         }
         return 0
     }
 
-    fun miseAJourDisponible(versionInstallee: String, distante: UpdateInfo?): Boolean =
-        distante != null && compareVersions(distante.versionName, versionInstallee) > 0
+    fun miseAJourDisponible(versionInstallee: String, info: UpdateInfo?): Boolean =
+        info != null && compareVersions(info.version, versionInstallee) > 0
 }

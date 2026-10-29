@@ -24,6 +24,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -104,6 +105,7 @@ private fun AppBatteryHub(demanderPermissions: () -> Unit) {
     var frequence by remember { mutableStateOf(reglages.frequenceMinutes) }
     var seuil by remember { mutableStateOf(reglages.seuil) }
     var lectureDeconnectes by remember { mutableStateOf(reglages.lectureDeconnectes) }
+    val etatMaj by UpdateManager.state.collectAsState()
 
     fun relever() {
         if (enCours) return
@@ -214,6 +216,11 @@ private fun AppBatteryHub(demanderPermissions: () -> Unit) {
                         }
                     },
                     appareilsMaj = { liste: List<Appareil> -> appareils = liste },
+                    etatMaj = etatMaj,
+                    onVerifierMaj = { UpdateManager.checkNow(context) },
+                    onTelechargerMaj = { UpdateManager.download(context) },
+                    onInstallerMaj = { UpdateManager.install(context) },
+                    onAutoriserInstallation = { UpdateManager.openInstallSettings(context) },
                 )
             }
         }

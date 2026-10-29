@@ -59,6 +59,7 @@ import fr.fh.batteryhub.data.Historique
 import fr.fh.batteryhub.data.Regles
 import fr.fh.batteryhub.data.TypeAppareil
 import fr.fh.batteryhub.export.ExportCsv
+import fr.fh.batteryhub.update.UpdateManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -654,6 +655,11 @@ fun EcranReglages(
     onLectureDeconnectes: (Boolean) -> Unit,
     onLectureAuto: (Appareil, Boolean) -> Unit,
     appareilsMaj: (List<Appareil>) -> Unit,
+    etatMaj: UpdateManager.State = UpdateManager.State.Idle,
+    onVerifierMaj: () -> Unit = {},
+    onTelechargerMaj: () -> Unit = {},
+    onInstallerMaj: () -> Unit = {},
+    onAutoriserInstallation: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val portee = rememberCoroutineScope()
@@ -790,6 +796,16 @@ fun EcranReglages(
         }
 
         Spacer(Modifier.height(12.dp))
+        CarteMiseAJour(
+            etat = etatMaj,
+            versionInstallee = BuildConfigVersion(),
+            onVerifier = onVerifierMaj,
+            onTelecharger = onTelechargerMaj,
+            onInstaller = onInstallerMaj,
+            onAutoriser = onAutoriserInstallation,
+        )
+
+        Spacer(Modifier.height(12.dp))
         Card(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
             modifier = Modifier.fillMaxWidth(),
@@ -844,6 +860,129 @@ fun EcranReglages(
 }
 
 private fun BuildConfigVersion(): String = fr.fh.batteryhub.BuildConfig.VERSION_NAME
+
+@Composable
+private fun CarteMiseAJour(
+    etat: UpdateManager.State,
+    versionInstallee: String,
+    onVerifier: () -> Unit,
+    onTelecharger: () -> Unit,
+    onInstaller: () -> Unit,
+    onAutoriser: () -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text(
+                "MISE À JOUR",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(6.dp))
+            when (etat) {
+                is UpdateManager.State.Available -> {
+                    Text(
+                        "Version ${etat.version} disponible",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    if (etat.notes.isNotBlank()) {
+                        Text(
+                            etat.notes.take(240),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    FilledTonalButton(onClick = onTelecharger) { Text("Télécharger") }
+                }
+
+                is UpdateManager.State.Downloading -> {
+                    Text(
+                        "Téléchargement de la version ${etat.version}",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    LinearProgressIndicator(
+                        progress = { etat.progress },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        "${(etat.progress * 100).toInt()} %",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+
+                is UpdateManager.State.ReadyToInstall -> {
+                    Text(
+                        "Version ${etat.version} prête",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        "L'installation remplace l'application, les réglages et l'historique sont conservés.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    FilledTonalButton(onClick = onInstaller) { Text("Installer") }
+                    TextButton(onClick = onAutoriser) {
+                        Text("Autoriser l'installation d'applications inconnues", fontSize = 11.sp)
+                    }
+                }
+
+                is UpdateManager.State.UpToDate -> {
+                    Text(
+                        "À jour (version ${etat.version})",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = onVerifier) { Text("Vérifier à nouveau") }
+                }
+
+                is UpdateManager.State.Failed -> {
+                    Text(
+                        "Vérification impossible",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    if (etat.detail != null) {
+                        Text(
+                            etat.detail,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = onVerifier) { Text("Réessayer") }
+                }
+
+                UpdateManager.State.Idle -> {
+                    Text(
+                        "Version installée : $versionInstallee",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(onClick = onVerifier) { Text("Vérifier les mises à jour") }
+                }
+            }
+        }
+    }
+}
 
 @Suppress("unused")
 private fun contexteNom(context: Context): String = context.packageName
