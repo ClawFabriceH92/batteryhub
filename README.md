@@ -16,12 +16,24 @@ v1.0.0 : application compilée, signée et publiée en release GitHub.
 ## Fonctionnalités
 
 - Relevé du téléphone : niveau, santé, cycles, température.
+- **Écran « Ma batterie » (v1.1.0)** : cycles (compteur du système quand Android 14+ le publie,
+  sinon estimation), état en direct (courant en mA, puissance en W, tension, température, charge
+  restante en mAh, temps de charge ou autonomie restante) et statistiques de charge/décharge sur
+  7 jours calculées à partir de nos propres relevés : mAh chargés et déchargés, nombre de sessions
+  de charge, durée et mAh moyens par session, vitesses moyennes, profondeur de décharge,
+  températures extrêmes, cycles estimés (mAh déchargés ÷ capacité nominale).
+  La capacité nominale se renseigne sur l'écran (4500 mAh par défaut).
 - Relevé des appareils Bluetooth appairés : niveau système quand il est exposé, sinon connexion GATT au service Battery (0x180F).
 - Lecture automatique des appareils hors de portée, désactivable appareil par appareil.
 - Veille en arrière-plan à la fréquence choisie (15 min, 30 min, 1 h, 3 h, 6 h), relancée après redémarrage.
 - Widget d'écran d'accueil 4 × 2 (les 4 appareils les plus bas) ou 2 × 2 (le plus bas).
 - Alertes sous le seuil réglable (15, 20, 25, 30 %) et rappel pour un appareil muet depuis 3 jours.
 - Historique local 90 jours, export CSV séparateur `;` avec BOM UTF-8.
+- Relevés enrichis (courant, secteur, température, charge restante) en base depuis la v1.1.0 :
+  migration non destructive, les anciens relevés restent lisibles et ne faussent pas les mAh.
+- Limite assumée : Android ne donne le nombre de cycles qu'à partir d'Android 14 et seulement si
+  le constructeur le publie ; le système de fichiers de la batterie (`/sys/class/power_supply`)
+  est refusé aux applications sans root. D'où l'estimation, affichée comme telle.
 - Mise à jour depuis les releases GitHub (téléchargement + installation).
 
 ## Compiler

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Notifications
@@ -34,13 +35,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import fr.fh.batteryhub.bt.BatterieTelephone
 import fr.fh.batteryhub.data.Appareil
+import fr.fh.batteryhub.data.Historique
 import fr.fh.batteryhub.data.Reglages
+import fr.fh.batteryhub.data.StatsBatterie
+import fr.fh.batteryhub.data.StatsChargeDecharge
 import fr.fh.batteryhub.service.Releveur
 import fr.fh.batteryhub.service.VeillePlanificateur
 import fr.fh.batteryhub.service.VeilleService
 import fr.fh.batteryhub.ui.EcranAlertes
 import fr.fh.batteryhub.ui.EcranAppareils
+import fr.fh.batteryhub.ui.EcranBatterie
 import fr.fh.batteryhub.ui.EcranHistorique
 import fr.fh.batteryhub.ui.EcranReglages
 import fr.fh.batteryhub.ui.EcranWidget
@@ -105,6 +111,9 @@ private fun AppBatteryHub(demanderPermissions: () -> Unit) {
     var frequence by remember { mutableStateOf(reglages.frequenceMinutes) }
     var seuil by remember { mutableStateOf(reglages.seuil) }
     var lectureDeconnectes by remember { mutableStateOf(reglages.lectureDeconnectes) }
+    var capaciteBatterie by remember { mutableStateOf(reglages.capaciteMah) }
+    var etatBatterie by remember { mutableStateOf<BatterieTelephone.EtatBatterie?>(null) }
+    var stats by remember { mutableStateOf(StatsChargeDecharge()) }
     val etatMaj by UpdateManager.state.collectAsState()
 
     fun relever() {
@@ -122,6 +131,31 @@ private fun AppBatteryHub(demanderPermissions: () -> Unit) {
         }
     }
 
+    // État en direct de la batterie + statistiques calculées sur les relevés :
+    // relus à chaque scan et quand la capacité nominale change.
+    LaunchedEffect(dernierScan, capaciteBatterie) {
+        val (etatLu, statsLues) = withContext(Dispatchers.IO) {
+            val lu = try {
+                BatterieTelephone.lireEtat(context)
+            } catch (_: Throwable) {
+                null
+            }
+            val echantillons = try {
+                val historique = Historique(context)
+                try {
+                    historique.echantillons(System.currentTimeMillis() - 7 * 86_400_000L)
+                } finally {
+                    historique.close()
+                }
+            } catch (_: Throwable) {
+                emptyList()
+            }
+            lu to StatsBatterie.calculer(echantillons, capaciteBatterie, 7)
+        }
+        etatBatterie = etatLu
+        stats = statsLues
+    }
+
     LaunchedEffect(Unit) {
         if (permissionsManquantes(context)) demanderPermissions()
         if (appareils.isEmpty() ||
@@ -136,10 +170,11 @@ private fun AppBatteryHub(demanderPermissions: () -> Unit) {
             NavigationBar {
                 val entrees = listOf(
                     Triple("Appareils", Icons.Filled.BatteryFull, 0),
-                    Triple("Historique", Icons.Filled.History, 1),
-                    Triple("Widget", Icons.Filled.Widgets, 2),
-                    Triple("Alertes", Icons.Filled.Notifications, 3),
-                    Triple("Réglages", Icons.Filled.Settings, 4),
+                    Triple("Ma batterie", Icons.Filled.BatteryChargingFull, 1),
+                    Triple("Historique", Icons.Filled.History, 2),
+                    Triple("Widget", Icons.Filled.Widgets, 3),
+                    Triple("Alertes", Icons.Filled.Notifications, 4),
+                    Triple("Réglages", Icons.Filled.Settings, 5),
                 )
                 entrees.forEach { (libelle, icone, index) ->
                     NavigationBarItem(
@@ -174,9 +209,21 @@ private fun AppBatteryHub(demanderPermissions: () -> Unit) {
                     },
                 )
 
-                1 -> EcranHistorique(appareils = appareils)
+                1 -> EcranBatterie(
+                    etat = etatBatterie,
+                    stats = stats,
+                    capaciteMah = reglages.capaciteMah,
+                    dernierScan = dernierScan,
+                    onCapacite = { capacite ->
+                        reglages.capaciteMah = capacite
+                        capaciteBatterie = reglages.capaciteMah
+                    },
+                    onRafraichir = { relever() },
+                )
 
-                2 -> EcranWidget(
+                2 -> EcranHistorique(appareils = appareils)
+
+                3 -> EcranWidget(
                     appareils = appareils,
                     mode = reglages.widgetMode,
                     onMode = { mode ->
@@ -185,7 +232,7 @@ private fun AppBatteryHub(demanderPermissions: () -> Unit) {
                     },
                 )
 
-                3 -> EcranAlertes(
+                4 -> EcranAlertes(
                     appareils = appareils,
                     seuil = seuil,
                     onSeuil = { valeur ->

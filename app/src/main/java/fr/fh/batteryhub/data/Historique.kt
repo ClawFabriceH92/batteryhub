@@ -7,7 +7,7 @@ import android.database.sqlite.SQLiteOpenHelper
 
 /** Base locale des relevés. Aucune donnée ne quitte le téléphone. */
 class Historique(context: Context) :
-    SQLiteOpenHelper(context, "batteryhub.db", null, 1) {
+    SQLiteOpenHelper(context, "batteryhub.db", null, 2) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -17,27 +17,49 @@ class Historique(context: Context) :
                 "nom TEXT NOT NULL," +
                 "type TEXT NOT NULL," +
                 "niveau INTEGER NOT NULL," +
-                "horodatage INTEGER NOT NULL)"
+                "horodatage INTEGER NOT NULL," +
+                "courant_ma INTEGER," +
+                "secteur INTEGER," +
+                "temperature REAL," +
+                "charge_mah INTEGER)"
         )
         db.execSQL("CREATE INDEX idx_releves ON releves(adresse, horodatage)")
     }
 
+    /**
+     * Migration 1 → 2 : les colonnes de courant, secteur, température et charge
+     * restante, qui servent au suivi de charge/décharge. Aucune donnée n'est
+     * touchée : les anciens relevés gardent des colonnes vides, et l'intégration
+     * du courant les ignore au lieu de les compter faux.
+     */
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // aucune migration destructive : la table est conservée telle quelle
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE releves ADD COLUMN courant_ma INTEGER")
+            db.execSQL("ALTER TABLE releves ADD COLUMN secteur INTEGER")
+            db.execSQL("ALTER TABLE releves ADD COLUMN temperature REAL")
+            db.execSQL("ALTER TABLE releves ADD COLUMN charge_mah INTEGER")
+        }
     }
 
-    fun enregistrer(appareils: List<Appareil>) {
+    fun enregistrer(appareils: List<Appareil>, etat: Echantillon? = null) {
         if (appareils.isEmpty()) return
         val db = writableDatabase
         db.beginTransaction()
         try {
             appareils.forEach { a ->
+                val estTelephone = a.adresse == Adresses.TELEPHONE
                 val v = ContentValues().apply {
                     put("adresse", a.adresse)
                     put("nom", a.nom)
                     put("type", a.type.name)
                     put("niveau", a.niveau)
                     put("horodatage", a.horodatage)
+                    if (estTelephone && etat != null) {
+                        etat.courantMa?.let { put("courant_ma", it) }
+                        put("secteur", if (etat.secteur) 1 else 0)
+                        etat.temperatureC?.let { put("temperature", it) }
+                        etat.chargeRestanteMah?.let { put("charge_mah", it) }
+                    }
                 }
                 db.insert("releves", null, v)
             }
@@ -55,6 +77,30 @@ class Historique(context: Context) :
             arrayOf(adresse, depuis.toString())
         ).use { c ->
             while (c.moveToNext()) out.add(c.getLong(0) to c.getInt(1))
+        }
+        return out
+    }
+
+    /** Relevés enrichis de la batterie interne, pour les statistiques. */
+    fun echantillons(depuis: Long, adresse: String = Adresses.TELEPHONE): List<Echantillon> {
+        val out = ArrayList<Echantillon>()
+        readableDatabase.rawQuery(
+            "SELECT horodatage, niveau, courant_ma, secteur, temperature, charge_mah " +
+                "FROM releves WHERE adresse = ? AND horodatage >= ? ORDER BY horodatage",
+            arrayOf(adresse, depuis.toString())
+        ).use { c ->
+            while (c.moveToNext()) {
+                out.add(
+                    Echantillon(
+                        horodatage = c.getLong(0),
+                        niveau = c.getInt(1),
+                        courantMa = if (c.isNull(2)) null else c.getInt(2),
+                        secteur = !c.isNull(3) && c.getInt(3) == 1,
+                        temperatureC = if (c.isNull(4)) null else c.getDouble(4),
+                        chargeRestanteMah = if (c.isNull(5)) null else c.getInt(5),
+                    )
+                )
+            }
         }
         return out
     }

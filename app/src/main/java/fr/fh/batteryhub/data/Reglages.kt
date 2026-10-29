@@ -26,6 +26,11 @@ class Reglages(context: Context) {
         get() = p.getString(CLE_WIDGET, "4x2") ?: "4x2"
         set(v) = p.edit().putString(CLE_WIDGET, v).apply()
 
+    /** Capacité nominale de la batterie, pour les cycles estimés et l'autonomie. */
+    var capaciteMah: Int
+        get() = p.getInt(CLE_CAPACITE, StatsBatterie.CAPACITE_PAR_DEFAUT)
+        set(v) = p.edit().putInt(CLE_CAPACITE, if (v in 500..20_000) v else StatsBatterie.CAPACITE_PAR_DEFAUT).apply()
+
     /** Lecture automatique d'un appareil précis (les appareils connectés sont toujours lus). */
     fun lectureAuto(adresse: String): Boolean = p.getBoolean("auto_$adresse", true)
 
@@ -45,5 +50,6 @@ class Reglages(context: Context) {
         const val CLE_SCAN = "dernier_scan"
         const val CLE_WIDGET = "widget_mode"
         const val CLE_INSTANTANE = "instantane"
+        const val CLE_CAPACITE = "capacite_mah"
     }
 }
