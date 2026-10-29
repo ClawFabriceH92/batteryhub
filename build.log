@@ -41,18 +41,20 @@ to this project's gradle.properties.
 > Task :app:extractReleaseNativeSymbolTables NO-SOURCE
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
 > Task :app:checkReleaseDuplicateClasses UP-TO-DATE
+> Task :app:processDebugManifestForPackage
 > Task :app:buildKotlinToolingMetadata UP-TO-DATE
 > Task :app:generateReleaseBuildConfig
 > Task :app:checkReleaseAarMetadata UP-TO-DATE
 > Task :app:generateReleaseResValues UP-TO-DATE
 > Task :app:mapReleaseSourceSetPaths
 > Task :app:generateReleaseResources
+> Task :app:processDebugResources
 > Task :app:packageReleaseResources
 > Task :app:parseReleaseLocalResources FROM-CACHE
 > Task :app:createReleaseCompatibleScreenManifests
 > Task :app:extractDeepLinksRelease UP-TO-DATE
 > Task :app:processReleaseMainManifest
-> Task :app:processDebugManifestForPackage
+> Task :app:mergeReleaseResources
 > Task :app:processReleaseManifest
 > Task :app:javaPreCompileRelease UP-TO-DATE
 > Task :app:desugarReleaseFileDependencies UP-TO-DATE
@@ -71,8 +73,6 @@ to this project's gradle.properties.
 > Task :app:writeReleaseAppMetadata UP-TO-DATE
 > Task :app:writeReleaseSigningConfigVersions UP-TO-DATE
 > Task :app:processReleaseManifestForPackage
-> Task :app:processDebugResources
-> Task :app:mergeReleaseResources
 > Task :app:processReleaseResources
 > Task :app:optimizeReleaseResources
 > Task :app:compileDebugKotlin
@@ -96,5 +96,5 @@ to this project's gradle.properties.
 > Task :app:createReleaseApkListingFileRedirect
 > Task :app:assembleRelease
 
-BUILD SUCCESSFUL in 52s
+BUILD SUCCESSFUL in 51s
 66 actionable tasks: 36 executed, 1 from cache, 29 up-to-date
